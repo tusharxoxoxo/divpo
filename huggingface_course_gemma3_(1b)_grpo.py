@@ -214,7 +214,31 @@ def calculate_diversity(response, responses):
 
     freq_score = sum(1 / word_counts.get(word, 1) for word in words) / len(words)
 
-    return log_prob + freq_score
+    # Normalize both scores to [0, 1] range within the batch
+    all_log_probs = []
+    all_freq_scores = []
+    for r in responses:
+        tokens = tokenizer(r, return_tensors="pt").to("cuda")
+        r_log_prob = -model(**tokens).logits.mean().item()
+        all_log_probs.append(r_log_prob)
+
+        r_words = r.split()
+        r_freq_score = sum(1 / word_counts.get(word, 1) for word in r_words) / len(
+            r_words
+        )
+        all_freq_scores.append(r_freq_score)
+
+    # Min-max normalization
+    min_log_prob, max_log_prob = min(all_log_probs), max(all_log_probs)
+    min_freq_score, max_freq_score = min(all_freq_scores), max(all_freq_scores)
+
+    norm_log_prob = (log_prob - min_log_prob) / (max_log_prob - min_log_prob + 1e-6)
+    norm_freq_score = (freq_score - min_freq_score) / (
+        max_freq_score - min_freq_score + 1e-6
+    )
+
+    # Equal weighting of normalized scores
+    return 0.5 * norm_log_prob + 0.5 * norm_freq_score
 
 
 # Modified reward function that combines correctness and diversity
